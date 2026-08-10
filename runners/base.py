@@ -212,6 +212,42 @@ class BaseRunner(ABC):
         """
         return self.acquisition in self.SUPPORTED_ACQUISITIONS
 
+    def extra_args(self) -> list[str]:
+        """Free-form CLI arguments appended verbatim to the built command.
+
+        Escape hatch for tool flags this pipeline does not model, so they need no
+        schema entry of their own — e.g. DIA-NN's decoy-generation options:
+
+            tools:
+              diann:
+                extra:
+                  extra_args: "--dg-keep-nterm 2 --dg-min-mut 20.0"
+
+        Also readable per version, which is appended after the tool-level value,
+        for flags that only exist in some versions:
+
+                versions:
+                  - id: "2.5.1"
+                    extra_args: "--dg-max-mut 60.0"
+
+        Accepts a string (split with shell quoting rules) or an already-split
+        list. Nothing is validated or translated: whatever is written here
+        reaches the tool as-is, and it is the caller's job to know the flag
+        exists in that version.
+
+        ponytail: appended at the end of the command only. Tools whose CLI needs
+        a flag before a positional argument are not supported; add an insertion
+        point if one ever does.
+        """
+        def split(raw) -> list[str]:
+            if not raw:
+                return []
+            if isinstance(raw, (list, tuple)):
+                return [str(a) for a in raw]
+            return shlex.split(str(raw))
+
+        return split((self.extra or {}).get("extra_args")) + split(self.version_cfg.get("extra_args"))
+
     def auto_tolerance(self, which: str) -> bool:
         """True when search_params sets this mass tolerance to 0, which means
         "let the tool work it out" rather than a literal 0 ppm window.
@@ -503,13 +539,22 @@ class BaseRunner(ABC):
         self.pre_run_hook(input_files)
 
         try:
-            cmd = self.build_command(input_files, fasta, output_dir)
+            cmd = list(self.build_command(input_files, fasta, output_dir))
+            # Free-form passthrough flags, last so they can override anything the
+            # runner already set (most CLIs let a later occurrence win). Inside the
+            # try because extra_args() raises on unbalanced quotes in user input.
+            passthrough = self.extra_args()
         except Exception as exc:
             return RunResult(
                 tool=self.tool_name, version=self.version_id, dataset=self.dataset_name,
                 success=False, runtime_s=0.0, output_dir=output_dir,
                 error_msg=f"build_command failed: {exc}",
             )
+
+        if passthrough:
+            logger.info("[%s v%s / %s] extra_args: %s", self.tool_name, self.version_id,
+                        self.dataset_name, shlex.join(passthrough))
+            cmd += passthrough
 
         logger.info("[%s v%s / %s] starting: %s", self.tool_name, self.version_id, self.dataset_name,
                     shlex.join(str(c) for c in cmd))

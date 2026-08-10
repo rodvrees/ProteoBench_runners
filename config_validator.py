@@ -6,6 +6,7 @@ Returns a list of human-readable error strings; an empty list means all checks p
 
 from __future__ import annotations
 
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -224,6 +225,21 @@ def _validate_datasets(datasets: dict, config_path: Path, errors: list[str]) -> 
             )
 
 
+def _validate_extra_args(value, where: str, errors: list[str]) -> None:
+    """extra_args is passed to the tool verbatim, so the only thing worth checking
+    is that it can be shell-split at all (a stray quote would otherwise fail the
+    job long after the run started)."""
+    if value is None or isinstance(value, (list, tuple)):
+        return
+    if not isinstance(value, str):
+        errors.append(f"{where}: should be a string or a list of arguments, got {value!r}.")
+        return
+    try:
+        shlex.split(value)
+    except ValueError as exc:
+        errors.append(f"{where}: cannot be parsed as command-line arguments ({exc}): {value!r}")
+
+
 def _validate_tools(
     tools: dict, datasets: dict, config_path: Path, errors: list[str]
 ) -> None:
@@ -233,6 +249,11 @@ def _validate_tools(
         if not isinstance(tool_cfg, dict):
             continue
         prefix = f"tools > {tool_name}"
+
+        # extra_args is free-form and never interpreted, but it is shell-split, so
+        # catch an unbalanced quote here rather than mid-run.
+        _validate_extra_args((tool_cfg.get("extra") or {}).get("extra_args"),
+                             f"{prefix} > extra > extra_args", errors)
 
         # Cross-check dataset names
         for ds_name in tool_cfg.get("datasets", []):
@@ -250,6 +271,8 @@ def _validate_tools(
 
             if "id" not in ver:
                 errors.append(f"{prefix}: version entry at index {i} is missing 'id'.")
+
+            _validate_extra_args(ver.get("extra_args"), f"{ver_prefix} > extra_args", errors)
 
             enabled = ver.get("enabled")
             if enabled is not None and not isinstance(enabled, bool):

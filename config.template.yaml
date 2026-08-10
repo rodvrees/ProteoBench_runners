@@ -238,6 +238,24 @@ datasets:
 # 'image:' and any *_bin/*_dir path inside it are filled in automatically by
 # `nextflow run setup.nf`. Only enabled versions are run. Disabling a version
 # is safe — it keeps the configuration for future use without executing the tool.
+#
+# ESCAPE HATCH — extra_args
+# Any tool flag this pipeline does not model can be passed through verbatim, with
+# no config schema entry of its own, by adding 'extra_args' to a tool's extra:
+# block or to a single version entry:
+#
+#   tools:
+#     diann:
+#       versions:
+#         - id: "2.5.1"
+#           extra_args: "--dg-max-mut 60.0"      # this version only
+#       extra:
+#         extra_args: "--dg-keep-nterm 2 --dg-min-mut 20.0"   # every version
+#
+# The string is split with shell quoting rules (a list of arguments also works)
+# and appended to the end of the command, tool-level first then version-level.
+# Nothing is validated or translated, so it is on you to know the flag exists in
+# that version. `python run_proteobench.py --dry-run` prints the final command.
 
 tools:
 

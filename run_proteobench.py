@@ -217,7 +217,9 @@ def show_dry_run_commands(jobs: list[BaseRunner]) -> None:
             input_files = job.get_input_files()
             fasta = Path(job.dataset_cfg["fasta"])
             output_dir = job.make_output_dir()
-            cmd = job.build_command(input_files, fasta, output_dir)
+            # Mirror run(): extra_args are appended after build_command, so the
+            # preview has to add them too or it shows a command that never runs.
+            cmd = list(job.build_command(input_files, fasta, output_dir)) + job.extra_args()
             print("  " + shlex.join(str(c) for c in cmd))
         except Exception as exc:
             print(f"  (command preview unavailable: {exc})")

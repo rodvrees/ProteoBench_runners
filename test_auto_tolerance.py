@@ -201,6 +201,47 @@ def check_fragpipe():
     print("fragpipe         ok")
 
 
+def check_extra_args():
+    """Free-form passthrough: appended verbatim, tool-level then version-level."""
+    v = {"id": "2.5.0", "image": "diann:2.5.0", "diann_bin": "/d"}
+
+    def runner(tool_extra=None, version_extra=None):
+        vc = {**v, **({"extra_args": version_extra} if version_extra is not None else {})}
+        dataset_cfg = {"path": "/tmp", "acquisition": "DIA", "format": "mzml",
+                       "fasta": "/tmp/f.fasta"}
+        extra = {"library": ""}
+        if tool_extra is not None:
+            extra["extra_args"] = tool_extra
+        return DIANNRunner({"versions": [vc], "extra": extra}, "TestSet",
+                           dataset_cfg, vc, GLOBAL, sp())
+
+    assert runner().extra_args() == []
+    assert runner(tool_extra="").extra_args() == []
+
+    # the flags from the request
+    r = runner(tool_extra="--dg-keep-nterm 2 --dg-keep-cterm 1 --dg-min-shuffle 7.5")
+    assert r.extra_args() == ["--dg-keep-nterm", "2", "--dg-keep-cterm", "1",
+                              "--dg-min-shuffle", "7.5"], r.extra_args()
+
+    # tool-level first, then version-level
+    r = runner(tool_extra="--dg-min-mut 20.0", version_extra="--dg-max-mut 60.0")
+    assert r.extra_args() == ["--dg-min-mut", "20.0", "--dg-max-mut", "60.0"], r.extra_args()
+
+    # version-level alone, and an already-split list
+    assert runner(version_extra="--dg-min-mut 20").extra_args() == ["--dg-min-mut", "20"]
+    assert runner(tool_extra=["--dg-min-mut", "20"]).extra_args() == ["--dg-min-mut", "20"]
+
+    # shell quoting is respected, so a value with spaces survives as one argument
+    assert runner(tool_extra="--foo 'a b'").extra_args() == ["--foo", "a b"]
+
+    # and it actually reaches the end of the command
+    cmd = runner(tool_extra="--dg-keep-nterm 2").build_command(
+        [Path("a.mzML")], Path("f.fasta"), Path("/tmp"))
+    cmd += runner(tool_extra="--dg-keep-nterm 2").extra_args()
+    assert cmd[-2:] == ["--dg-keep-nterm", "2"], cmd[-4:]
+    print("extra_args       ok")
+
+
 def check_auto_tolerance_helper():
     v = {"id": "2.5.0", "image": "diann:2.5.0", "diann_bin": "/d"}
     r = make(DIANNRunner, sp(precursor_mass_tolerance_ppm=0), v)
@@ -216,6 +257,7 @@ def check_auto_tolerance_helper():
 
 if __name__ == "__main__":
     check_auto_tolerance_helper()
+    check_extra_args()
     check_diann()
     check_alphadia()
     check_sage()

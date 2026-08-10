@@ -200,6 +200,8 @@ class DIANNRunner(BaseRunner):
             "--min-fr-mz",        str(int(p["min_fr_mz"])),
             "--max-fr-mz",        str(int(p["max_fr_mz"])),
             "--cut",              str(p["enzyme"]),
+            "--gen-spec-lib",
+            "--predictor"
         ]
 
         # Tolerance 0 = automatic: DIA-NN determines mass accuracy itself from the
